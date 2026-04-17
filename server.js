@@ -1,29 +1,89 @@
 const express = require("express");
-const bodyParser = require("body-parser");
+const cors = require("cors");
 
 const app = express();
-app.use(bodyParser.json());
 
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Optional: API Key सुरक्षा
+const API_KEY = process.env.API_KEY || "mysecretkey";
+
+app.use((req, res, next) => {
+  const key = req.headers["x-api-key"];
+  if (!key || key !== API_KEY) {
+    return res.status(403).json({ error: "Forbidden: Invalid API Key" });
+  }
+  next();
+});
+
+// Health check (important for deployment)
+app.get("/", (req, res) => {
+  res.send("✅ MCP Server is running");
+});
+
+// MCP endpoint
 app.post("/mcp", async (req, res) => {
+  try {
     const { method, params, id } = req.body;
 
     let result;
 
-    if (method === "get_weather") {
-        result = { temperature: "28°C", city: params.city };
-    } else if (method === "search_web") {
-        result = { results: [`Result for ${params.query}`] };
-    } else {
-        result = { error: "Unknown method" };
+    switch (method) {
+      case "get_weather":
+        result = {
+          city: params?.city || "Unknown",
+          temperature: "28°C",
+          condition: "Sunny"
+        };
+        break;
+
+      case "search_web":
+        result = {
+          query: params?.query,
+          results: [
+            `Top result for ${params?.query}`,
+            `Another result for ${params?.query}`
+          ]
+        };
+        break;
+
+      case "sum_numbers":
+        const numbers = params?.numbers || [];
+        const sum = numbers.reduce((a, b) => a + b, 0);
+        result = { numbers, sum };
+        break;
+
+      default:
+        return res.status(400).json({
+          jsonrpc: "2.0",
+          error: { message: "Unknown method" },
+          id
+        });
     }
 
+    // Standard MCP JSON-RPC response
     res.json({
-        jsonrpc: "2.0",
-        result,
-        id
+      jsonrpc: "2.0",
+      result,
+      id
     });
+
+  } catch (error) {
+    console.error("Error:", error.message);
+
+    res.status(500).json({
+      jsonrpc: "2.0",
+      error: { message: "Internal Server Error" },
+      id: null
+    });
+  }
 });
 
-app.listen(3000, () => {
-    console.log("MCP Server running on port 3000");
+// Port (important for Docker/Render)
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`🚀 MCP Server running on port ${PORT}`);
 });
